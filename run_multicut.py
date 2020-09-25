@@ -8,12 +8,15 @@ import h5py
 import vigra
 from run_stitching import *
 
+
 def get_rf_model(
-        output_folder = None,
-        input_raw_files = None,
-        input_mem_files = None,
-        input_sv_files = None,
-        input_gt_files = None):
+        output_folder=None,
+        input_raw_files=None,
+        input_mem_files=None,
+        input_sv_files=None,
+        input_gt_files=None,
+        rf_filename='rf.pkl'
+):
 
     """
     :param output_folder: path to folder where to write a file with the model
@@ -21,11 +24,12 @@ def get_rf_model(
     :param input_mem_files:  list or just string describing path(s) to membrane prediction file(s) for training
     :param input_sv_files:  list or just string describing path(s) to supervoxels file(s) for training
     :param input_gt_files:  list or just string describing path(s) to griund truth  file(s) for training
+    :param rf_filename: Filename used to save the random forest model
     :return: Random Forest model
     """
-    if not output_folder :
+    if not output_folder:
         output_folder = '/g/schwab/Viktoriia/src/source/'
-    rf_save_path = output_folder + 'rf.pkl'
+    rf_save_path = os.path.join(output_folder, rf_filename)
     if os.path.exists(rf_save_path):
         with open(rf_save_path, 'rb') as f:
             rf = pickle.load(f)
@@ -198,7 +202,7 @@ def stitch_supervoxels(input_sv_path = None, sv_pattern = '{}_{}_{}.h5',
 
 
 
-def mc_segmentation(bb, mc_blocks = [256, 256, 256], filename_raw = None, dataset_raw = '/t00000/s00/0/cells',
+def mc_segmentation(bb, mc_blocks = None, filename_raw = None, dataset_raw = '/t00000/s00/0/cells',
                     filename_mem = None, filename_sv = None, rf = None,
                     n_threads = 4, beta = 0.5, error_file = None ):
     """
@@ -231,6 +235,13 @@ def mc_segmentation(bb, mc_blocks = [256, 256, 256], filename_raw = None, datase
     assert data_sv.shape == shape
 
     data_sv, maxlabel, mapping = vigra.analysis.relabelConsecutive(data_sv)
+    
+    if mc_blocks is None:
+        solver = 'kernighan-lin'
+        solver_kwargs = {}
+    else:
+        solver = 'blockwise-multicut'
+        solver_kwargs = {'internal_solver': 'kernighan-lin', 'block_shape': mc_blocks}
 
     if np.min(data_sv) == np.max(data_sv):
         return np.zeros(shape)
@@ -240,9 +251,8 @@ def mc_segmentation(bb, mc_blocks = [256, 256, 256], filename_raw = None, datase
                                                           boundaries=data_mem,
                                                           rf=rf, use_2dws=False,
                                                           watershed=data_sv,
-                                                          multicut_solver='blockwise-multicut',
-                                                          solver_kwargs={'internal_solver': 'kernighan-lin',
-                                                                         'block_shape': mc_blocks},
+                                                          multicut_solver=solver,
+                                                          solver_kwargs=solver_kwargs,
                                                           n_threads=n_threads, beta=beta)
         return segmentation
     except RuntimeError:
