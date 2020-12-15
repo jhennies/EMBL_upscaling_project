@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 import elf
 import elf.segmentation.workflows as elf_workflow
+from elf.segmentation.workflows import DEFAULT_RF_KWARGS
 from elf.io import open_file
 import h5py
 import vigra
@@ -15,7 +16,8 @@ def get_rf_model(
         input_mem_files=None,
         input_sv_files=None,
         input_gt_files=None,
-        rf_filename='rf.pkl'
+        rf_filename='rf.pkl',
+        learning_kwargs=DEFAULT_RF_KWARGS
 ):
 
     """
@@ -25,6 +27,7 @@ def get_rf_model(
     :param input_sv_files:  list or just string describing path(s) to supervoxels file(s) for training
     :param input_gt_files:  list or just string describing path(s) to griund truth  file(s) for training
     :param rf_filename: Filename used to save the random forest model
+    :param learning_kwargs: Keyword arguments of the random forest
     :return: Random Forest model
     """
     if not output_folder:
@@ -108,7 +111,8 @@ def get_rf_model(
 
     # do edge training
     rf = elf_workflow.edge_training(raw=raw_train, boundaries=mem_train, labels=gt_train,
-                                        use_2dws=False, watershed=new_sv_labels_train)
+                                    use_2dws=False, watershed=new_sv_labels_train,
+                                    learning_kwargs=learning_kwargs)
     with open(rf_save_path, 'wb') as f:
         pickle.dump(rf, f)
     return rf
@@ -223,6 +227,9 @@ def mc_segmentation(bb, mc_blocks = None, filename_raw = None, dataset_raw = '/t
     data_raw = f[dataset_raw][bb].astype(np.float32)
     shape = data_raw.shape
 
+    print(f'bb = {bb}')
+    print(f'shape = {shape}')
+
     if np.min(data_raw) == np.max(data_raw):
         return np.zeros(shape)
 
@@ -234,7 +241,8 @@ def mc_segmentation(bb, mc_blocks = None, filename_raw = None, dataset_raw = '/t
     data_sv = f['data'][bb].astype('uint32')
     assert data_sv.shape == shape
 
-    data_sv, maxlabel, mapping = vigra.analysis.relabelConsecutive(data_sv)
+    # data_sv, _, _ = vigra.analysis.relabelConsecutive(data_sv)
+    data_sv = vigra.analysis.labelVolume(data_sv)
     
     if mc_blocks is None:
         solver = 'kernighan-lin'
